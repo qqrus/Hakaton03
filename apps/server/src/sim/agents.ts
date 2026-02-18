@@ -581,6 +581,150 @@ function generateConversation(input: DecideActionInput, other: AgentState): stri
     }
   }
 
+  // ═══════ 14. REACTIONS TO BEAST FIGHTS & CHALLENGES ═══════
+  const recentBeastFights = recentEvents.filter(e => e.type === 'beast_fight')
+  for (const bf of recentBeastFights) {
+    if (bf.title.includes('ПОБЕДИЛ')) {
+      const heroName = bf.title.replace(/[⚔️🐻\s]+/g, '').split('ПОБЕДИЛ')[0]?.trim()
+      pool.push(`${other.name}, ты видел как ${heroName ?? 'кто-то'} победил хищника?! Невероятно!`)
+      pool.push(`Этот бой с хищником... ${heroName ?? 'Герой'} спас нам жизнь! Я теперь в долгу.`)
+      pool.push(`После атаки зверя нам нужно быть осторожнее. Надо выставить караул, ${other.name}!`)
+      pool.push(`${heroName ?? 'Победитель'} — настоящий боец! Без него мы бы не справились.`)
+    } else if (bf.title.includes('свирепствует')) {
+      pool.push(`${other.name}, этот зверь чуть нас не убил! Нужно оружие!`)
+      pool.push(`Мы едва выжили после атаки хищника... Нужны ножи и факелы!`)
+      pool.push(`Больше я без оружия никуда не пойду. ${other.name}, давай скрафтим ножи?`)
+    }
+  }
+
+  const recentChallengeResults = recentEvents.filter(e => e.type === 'challenge_result')
+  for (const cr of recentChallengeResults) {
+    pool.push(`${other.name}, ты в порядке после ${cr.title}?`)
+    pool.push(`После этого испытания нам нужно восстановиться. Давай найдём укрытие!`)
+    pool.push(`Остров нас не щадит... ${cr.text.slice(0, 50)}. Но мы выдержим!`)
+    if (cr.title.includes('РАЗРУШЕНО') || cr.title.includes('СГОРЕЛО')) {
+      pool.push(`Укрытие уничтожено! ${other.name}, нам срочно нужно построить новое!`)
+      pool.push(`Без укрытия мы не переживём следующий шторм. Помоги собрать дерево!`)
+    }
+  }
+
+  const recentHeroic = recentEvents.filter(e => e.type === 'heroic')
+  for (const h of recentHeroic) {
+    pool.push(`${h.title}! Вот это поступок! ${other.name}, ты знала об этом?`)
+    pool.push(`Настоящий герой среди нас... ${h.text.slice(0, 60)}`)
+  }
+
+  const recentAlliances = recentEvents.filter(e => e.type === 'alliance')
+  for (const al of recentAlliances) {
+    if (!al.participants?.includes(agent.id)) {
+      pool.push(`${other.name}, слышал? ${al.title}! Может нам тоже стоит объединиться?`)
+    } else {
+      pool.push(`${other.name}, наш альянс — лучшее что случилось на этом острове!`)
+    }
+  }
+
+  const recentDiscoveries = recentEvents.filter(e => e.type === 'discovery')
+  for (const d of recentDiscoveries) {
+    pool.push(`${other.name}, ты слышал? ${d.text.slice(0, 60)}! Надо это проверить!`)
+    pool.push(`Интересная находка: ${d.title}. На острове полно тайн!`)
+  }
+
+  // ═══════ 15. STRATEGY & TACTICS ═══════
+  pool.push(`${other.name}, нам нужна стратегия. Кто караулит ночью, кто добывает еду?`)
+  pool.push(`Предлагаю: утром — сбор ресурсов, днём — стройка, вечером — готовимся к ночи.`)
+  pool.push(`${other.name}, может расставим ловушки вокруг лагеря? Хищники повсюду!`)
+  pool.push(`У нас должен быть план эвакуации! Если шторм — все бегут в пещеру, договорились?`)
+  pool.push(`${other.name}, давай организуем дежурство. Нельзя чтобы все спали одновременно.`)
+  if (input.day > 3) {
+    pool.push(`Уже ${input.day}-й день. Если нас не найдут скоро, надо строить плот...`)
+    pool.push(`${other.name}, может стоит разжечь сигнальный костёр на вершине горы?`)
+  }
+
+  // ═══════ 16. PERSONAL BACKSTORIES ═══════
+  const backstories: Record<string, string[]> = {
+    Leader: [
+      `До кораблекрушения я управлял командой. Привык нести ответственность.`,
+      `У меня дома семья... Они, наверное, с ума сходят.`,
+      `Я всегда мечтал о приключениях. Но не таких.`,
+    ],
+    Scout: [
+      `Я с детства лазил по горам. Исследование — моя стихия!`,
+      `В прошлой жизни я был фотографом дикой природы. Ирония судьбы...`,
+      `Мне нравится быть один. Но не так надолго.`,
+    ],
+    Medic: [
+      `Я училась на врача. Никогда не думала, что придётся лечить травами.`,
+      `Моя мама была травницей. Наконец-то пригодились её уроки.`,
+      `Каждая потерянная жизнь — это мой провал. Я не могу этого допустить.`,
+    ],
+    Builder: [
+      `Я работал на стройке. Руки помнят, как держать инструмент.`,
+      `Мой дед строил дома. Он бы гордился этим укрытием.`,
+      `Я не люблю говорить, но руками могу многое.`,
+    ],
+    Hunter: [
+      `Охота — это искусство. Терпение, тишина, точный удар.`,
+      `В армии я был снайпером. Теперь охочусь на рыбу...`,
+      `Мне не нравится убивать. Но еда нужна всем.`,
+    ],
+  }
+  const myStories = backstories[agent.role] ?? []
+  for (const s of myStories) {
+    pool.push(`${other.name}... ${s}`)
+  }
+
+  // ═══════ 17. SECRETS & RUMORS ═══════
+  pool.push(`${other.name}, я слышал странные звуки из пещеры прошлой ночью...`)
+  pool.push(`Знаешь, я нашёл странные символы на скале. Кто-то был здесь до нас.`)
+  pool.push(`${other.name}, мне кажется, этот остров не так прост. Здесь что-то скрыто.`)
+  pool.push(`Я видел свет в джунглях ночью. Там кто-то есть... или что-то.`)
+  pool.push(`${other.name}, не говори никому, но я нашёл странный предмет. Не знаю что это.`)
+  pool.push(`Мне снился один и тот же сон: мы все стоим у обрыва... это знак.`)
+  pool.push(`${other.name}, ты заметил? Некоторые деревья тут растут в форме стрелок. Куда они указывают?`)
+
+  // ═══════ 18. CONFLICTS & ARGUMENTS ═══════
+  if (r.affinity < -0.1) {
+    pool.push(`${other.name}, хватит! Из-за тебя мы потеряли время! Надо было идти к озеру!`)
+    pool.push(`Я не согласен с тобой, ${other.name}. Твой план — самоубийство!`)
+    pool.push(`Кто назначил тебя главным? ${other.name}, у каждого свой голос!`)
+  }
+  if (input.agents.filter(a => a.isAlive).length <= 3) {
+    pool.push(`Нас осталось мало... ${other.name}, нельзя больше ссориться. Мы одна команда.`)
+    pool.push(`Каждый из нас на счету. ${other.name}, забудем обиды?`)
+  }
+  // Resource conflicts
+  if (agent.hunger > 60 && other.inventory.length > 3) {
+    pool.push(`${other.name}, ты копишь ресурсы! Поделись с остальными! Люди голодают!`)
+  }
+
+  // ═══════ 19. HUMOR & MORALE ═══════
+  pool.push(`${other.name}, знаешь анекдот? Два робинзона на острове... А, ну мы и есть робинзоны.`)
+  pool.push(`Зато здесь нет интернета — можно наконец-то выспаться! ...если бы не хищники.`)
+  pool.push(`${other.name}, когда нас спасут, я напишу книгу: "Как выжить с ${input.agents.filter(a => a.isAlive).length} безумцами на острове"`)
+  pool.push(`Хей ${other.name}, смотри на это оптимистично — бесплатный отпуск на тропическом острове!`)
+  pool.push(`${other.name}, а ведь мы могли бы стать звёздами реалити-шоу! "Выжить любой ценой"!`)
+  pool.push(`Знаешь что, ${other.name}? Я начинаю привыкать к этому месту. Страшно, правда?`)
+  if (agent.hunger < 20 && agent.health > 70) {
+    pool.push(`${other.name}, жизнь налаживается! Сыт, здоров — почти как дома!`)
+  }
+
+  // ═══════ 20. ALLIANCE PROPOSALS ═══════
+  if (r.affinity > 0.3 && r.trust > 0.25) {
+    pool.push(`${other.name}, давай держаться вместе? Вдвоём проще выжить.`)
+    pool.push(`Я тебе доверяю, ${other.name}. Предлагаю альянс — будем прикрывать друг друга.`)
+    pool.push(`${other.name}, если что-то пойдёт не так — я на твоей стороне. Запомни это.`)
+  } else if (r.affinity > 0) {
+    pool.push(`${other.name}, мы не так близки, но на этом острове важен каждый. Давай сотрудничать.`)
+  }
+
+  // ═══════ 21. SURVIVAL SKILLS SHARING ═══════
+  const bestSkill = Object.entries(agent.skills).sort((a, b) => b[1].level - a[1].level)[0]
+  if (bestSkill && bestSkill[1].level >= 2) {
+    const skillNameRu: Record<string, string> = { gathering: 'сбор ресурсов', crafting: 'крафт', combat: 'бой', medicine: 'медицина', building: 'строительство' }
+    pool.push(`${other.name}, я прокачал ${skillNameRu[bestSkill[0]] ?? bestSkill[0]} до Лв${bestSkill[1].level}! Могу научить.`)
+    pool.push(`С моим уровнем ${skillNameRu[bestSkill[0]] ?? bestSkill[0]} я могу ${bestSkill[0] === 'combat' ? 'защитить нас от хищников' : bestSkill[0] === 'gathering' ? 'добыть больше ресурсов' : bestSkill[0] === 'medicine' ? 'вылечить раненых' : 'построить что-нибудь полезное'}.`)
+  }
+
   return pick(rnd, pool)
 }
 
@@ -594,7 +738,7 @@ function extractPlayerDirective(input: DecideActionInput): AgentAction | null {
   // Check for recent player messages or goal changes directed at this agent
   const recentPlayerEvents = input.recentFeed.filter(e =>
     e.participants?.includes(agent.id) &&
-    (e.type === 'goal' || (e.type === 'message' && e.title.includes('Голос свыше')) || (e.type === 'world' && e.title.includes('Испытание')))
+    (e.type === 'goal' || (e.type === 'message' && e.title.includes('Голос свыше')) || (e.type === 'world' && e.title.includes('Испытание')) || e.type === 'beast_fight' || e.type === 'challenge_result' || e.type === 'heroic' || e.type === 'discovery')
   )
 
   if (recentPlayerEvents.length === 0) return null
@@ -676,6 +820,43 @@ function extractPlayerDirective(input: DecideActionInput): AgentAction | null {
     return { type: 'rest' }
   }
 
+  // ★ Reactive behavior for beast fights and challenges
+  if (latest.type === 'beast_fight' || latest.type === 'challenge_result') {
+    // If wounded, prioritize healing
+    if (agent.health < 40) {
+      if (agent.inventory.includes('medicine') || agent.inventory.includes('herbs')) {
+        return { type: 'heal', target: agent.id }
+      }
+      // Flee to a neighbor if critically low
+      if (agent.health < 20) {
+        const nbs = neighbors(input.world, here)
+        if (nbs.length) return { type: 'move', to: pick(rnd, nbs) }
+      }
+    }
+    // If others are wounded, help them (medics prioritize this)
+    const wounded = input.agents.filter(a => a.locationId === here && a.health < 50 && a.id !== agent.id && a.isAlive)
+    if (wounded.length && (agent.inventory.includes('medicine') || agent.inventory.includes('herbs'))) {
+      const mostWounded = wounded.sort((a, b) => a.health - b.health)[0]!
+      return { type: 'heal', target: mostWounded.id }
+    }
+    // If shelter was destroyed, gather wood to rebuild
+    if (loc && !loc.shelter && (latest.text.includes('РАЗРУШЕНО') || latest.text.includes('СГОРЕЛО'))) {
+      const wood = loc.resources['wood'] ?? 0
+      if (agent.inventory.includes('wood')) return { type: 'build' }
+      if (wood > 0) return { type: 'gather', resource: 'wood' }
+    }
+    // Talk about what happened
+    const othersHere = input.agents.filter(a => a.locationId === here && a.id !== agent.id && a.isAlive)
+    if (othersHere.length > 0) {
+      return { type: 'message', to: othersHere[0]!.id, text: `Ты в порядке? ${latest.title} — это было жестко!` }
+    }
+  }
+
+  // ★ React to discoveries by exploring
+  if (latest.type === 'discovery') {
+    return { type: 'explore' }
+  }
+
   // Default: try to do something relevant to goal
   return null
 }
@@ -696,7 +877,11 @@ function systemPrompt(agent: AgentState, input: DecideActionInput) {
   // Find recent player directives
   const playerGoalChanged = input.recentFeed.some(e => e.type === 'goal' && e.participants?.includes(agent.id))
   const playerMessage = input.recentFeed.filter(e => e.type === 'message' && e.title.includes('Голос свыше') && e.participants?.includes(agent.id)).slice(-1)[0]
-  const playerChallenge = input.recentFeed.filter(e => e.type === 'world' && e.title.includes('Испытание') && e.participants?.includes(agent.id)).slice(-1)[0]
+  const playerChallenge = input.recentFeed.filter(e => (e.type === 'world' && e.title.includes('Испытание') || e.type === 'challenge_result') && e.participants?.includes(agent.id)).slice(-1)[0]
+  const recentBeast = input.recentFeed.filter(e => e.type === 'beast_fight' && e.participants?.includes(agent.id)).slice(-1)[0]
+  const recentHeroic = input.recentFeed.filter(e => e.type === 'heroic' && e.participants?.includes(agent.id)).slice(-1)[0]
+  const recentAlliance = input.recentFeed.filter(e => e.type === 'alliance' && e.participants?.includes(agent.id)).slice(-1)[0]
+  const recentDiscovery = input.recentFeed.filter(e => e.type === 'discovery' && e.participants?.includes(agent.id)).slice(-1)[0]
 
   const lines = [
     'Ты один из 5 выживших на необитаемом острове после кораблекрушения.',
@@ -709,13 +894,17 @@ function systemPrompt(agent: AgentState, input: DecideActionInput) {
   ]
 
   // ★★★ CRITICAL: Player directive injection ★★★
-  if (playerGoalChanged || playerMessage || playerChallenge) {
+  if (playerGoalChanged || playerMessage || playerChallenge || recentBeast || recentHeroic || recentAlliance || recentDiscovery) {
     lines.push('═══════ ⚠️ ПРИКАЗ ИГРОКА — АБСОЛЮТНЫЙ ПРИОРИТЕТ ═══════')
     if (playerGoalChanged) lines.push(`🎯 ИГРОК ЗАДАЛ ТЕБЕ НОВУЮ ЦЕЛЬ: "${agent.goal}"`)
     if (playerMessage) lines.push(`📡 СООБЩЕНИЕ ОТ ИГРОКА: "${playerMessage.text}"`)
     if (playerChallenge) lines.push(`⚡ ИСПЫТАНИЕ НА ЛОКАЦИИ: "${playerChallenge.text}"`)
+    if (recentBeast) lines.push(`🐻 ЗВЕРЬ НА ЛОКАЦИИ: "${recentBeast.text}" — РЕАГИРУЙ НА ЭТО В РАЗГОВОРАХ!`)
+    if (recentHeroic) lines.push(`🛡️ ГЕРОИЧЕСКИЙ ПОСТУПОК: "${recentHeroic.text}"`)
+    if (recentAlliance) lines.push(`🤝 АЛЬЯНС: "${recentAlliance.text}" — обсуди это!`)
+    if (recentDiscovery) lines.push(`💎 НАХОДКА: "${recentDiscovery.text}" — расскажи другим!`)
     lines.push('ТЫ ОБЯЗАН выполнить приказ игрока НЕМЕДЛЕННО. Не игнорируй!')
-    lines.push('Выбери действие, которое НАПРЯМУЮ относится к приказу.')
+    lines.push('Выбери действие, которое НАПРЯМУЮ относится к приказу или событию.')
     lines.push('══════════════════════════════════════════════')
     lines.push('')
   }

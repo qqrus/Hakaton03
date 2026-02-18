@@ -186,8 +186,283 @@ export function createEngine(opts: EngineOpts) {
     const agentsHere = agents.filter(a => a.isAlive && a.locationId === locationId)
     const nearby = neighbors(world, locationId).flatMap(nid => agents.filter(a => a.isAlive && a.locationId === nid))
     const all = [...agentsHere, ...nearby]
-    // Apply immediate damage for dangerous challenges
-    const isDangerous = /хищник|зверь|шторм|потоп|пожар|атак|обвал/i.test(text)
+
+    // ═══════ BEAST / PREDATOR FIGHT ═══════
+    const isBeast = /хищник|зверь|нападает|дикий|медведь|волк|пантер/i.test(text)
+    if (isBeast && agentsHere.length > 0) {
+      const rnd = mulberry32(Date.now() + locationId.charCodeAt(0))
+      const beastStrength = 0.55 + rnd() * 0.3 // 0.55–0.85
+
+      // Announce beast arrival
+      pushEvent({
+        type: 'beast_fight',
+        title: `🐻 ХИЩНИК В ${loc.name.toUpperCase()}!`,
+        text: `Дикий зверь напал на выживших в ${loc.name}! Начинается бой!`,
+        locationId,
+        importance: 0.95,
+        participants: agentsHere.map(a => a.id),
+      })
+
+      // Each agent fights the beast — determine scores
+      const fightResults: { agent: AgentState; score: number; dmg: number }[] = []
+      for (const a of agentsHere) {
+        const hasWeapon = a.inventory.includes('knife') || a.inventory.includes('axe')
+        const combatBonus = a.skills.combat.level * 0.08
+        const traitBonus = a.traits.aggression * 0.15 + a.traits.endurance * 0.1
+        const weaponBonus = hasWeapon ? 0.2 : 0
+        const score = combatBonus + traitBonus + weaponBonus + rnd() * 0.25
+        const dmg = Math.floor(5 + rnd() * 12 + (score < beastStrength ? 8 : 0))
+        fightResults.push({ agent: a, score, dmg })
+      }
+
+      // Sort by score — best fighter is the hero
+      fightResults.sort((a, b) => b.score - a.score)
+      const hero = fightResults[0]!
+      const heroWins = hero.score >= beastStrength * 0.7
+
+      if (heroWins) {
+        // Hero defeats the beast!
+        const heroDmg = Math.floor(3 + rnd() * 8)
+        hero.agent.health = clamp(hero.agent.health - heroDmg, 0, 100)
+        addSkillXP(hero.agent, 'combat', 25)
+
+        // Loot from beast
+        const lootOptions = ['food', 'food', 'herbs', 'cloth']
+        const loot = pick(rnd, lootOptions)
+        hero.agent.inventory.push(loot)
+        if (hero.agent.inventory.length > 12) hero.agent.inventory.shift()
+
+        pushEvent({
+          type: 'beast_fight',
+          title: `⚔️🐻 ${hero.agent.name} ПОБЕДИЛ ХИЩНИКА!`,
+          text: `${hero.agent.emoji} ${hero.agent.name} героически сразил дикого зверя в ${loc.name}! Получил трофей: ${loot}. -${heroDmg} HP (${hero.agent.health}/100). Бой Лв${hero.agent.skills.combat.level}!`,
+          locationId,
+          importance: 1.0,
+          participants: agentsHere.map(a => a.id),
+        })
+
+        hero.agent.lastThought = `Я победил хищника! 💪`
+
+        // Others take less damage
+        for (const fr of fightResults.slice(1)) {
+          const otherDmg = Math.floor(3 + rnd() * 6)
+          fr.agent.health = clamp(fr.agent.health - otherDmg, 0, 100)
+          addSkillXP(fr.agent, 'combat', 10)
+          if (fr.agent.health <= 0) killAgent(fr.agent, `бой с хищником в ${loc.name}`)
+        }
+
+        // Heroic event — boost relations
+        for (const fr of fightResults.slice(1)) {
+          if (fr.agent.isAlive) {
+            bumpRelation(relations, hero.agent.id, fr.agent.id, 0.25, 0.2)
+          }
+        }
+        rebuildRelCache()
+
+        // Heroic action event
+        if (fightResults.length > 1) {
+          pushEvent({
+            type: 'heroic',
+            title: `🛡️ ${hero.agent.name} — ГЕРОЙ!`,
+            text: `${hero.agent.name} защитил ${fightResults.slice(1).map(f => f.agent.name).join(', ')} от хищника!`,
+            locationId,
+            importance: 0.85,
+            participants: agentsHere.map(a => a.id),
+          })
+        }
+      } else {
+        // Beast wins — everyone takes heavy damage
+        for (const fr of fightResults) {
+          fr.agent.health = clamp(fr.agent.health - fr.dmg, 0, 100)
+          addSkillXP(fr.agent, 'combat', 8)
+          if (fr.agent.health <= 0) killAgent(fr.agent, `растерзан хищником в ${loc.name}`)
+        }
+
+        const survivor = fightResults.find(f => f.agent.isAlive)
+        pushEvent({
+          type: 'beast_fight',
+          title: `🐻💀 Хищник свирепствует!`,
+          text: `Зверь оказался слишком силён! Пострадавшие: ${fightResults.map(f => `${f.agent.name} (-${f.dmg} HP, ${f.agent.health}/100)`).join(', ')}. ${survivor ? `${survivor.agent.name} едва выжил!` : 'Все ранены!'}`,
+          locationId,
+          importance: 1.0,
+          participants: agentsHere.map(a => a.id),
+        })
+      }
+      return
+    }
+
+    // ═══════ FLOOD ═══════
+    const isFlood = /потоп|вода|залив|наводнен/i.test(text)
+    if (isFlood) {
+      if (loc.shelter) {
+        loc.shelter = false
+        pushEvent({
+          type: 'challenge_result',
+          title: `🌊💥 Укрытие в ${loc.name} РАЗРУШЕНО!`,
+          text: `Потоп смыл укрытие в ${loc.name}! Выжившие остались без защиты.`,
+          locationId,
+          importance: 0.9,
+          participants: all.map(a => a.id),
+        })
+      }
+      for (const a of agentsHere) {
+        const dmg = Math.floor(8 + Math.random() * 10)
+        a.health = clamp(a.health - dmg, 0, 100)
+        a.lastThought = 'Вода повсюду! Нужно бежать!'
+        if (a.health <= 0) killAgent(a, `утонул в потопе: ${loc.name}`)
+      }
+      // Hero saves someone
+      const rnd = mulberry32(Date.now())
+      if (agentsHere.length >= 2) {
+        const sorted = [...agentsHere].filter(a => a.isAlive).sort((a, b) => b.traits.endurance - a.traits.endurance)
+        if (sorted.length >= 2 && rnd() < 0.6) {
+          const savior = sorted[0]!
+          const saved = sorted[sorted.length - 1]!
+          saved.health = clamp(saved.health + 15, 0, 100)
+          bumpRelation(relations, savior.id, saved.id, 0.3, 0.25)
+          rebuildRelCache()
+          pushEvent({
+            type: 'heroic',
+            title: `🦸 ${savior.name} спасает ${saved.name}!`,
+            text: `${savior.name} вытащил ${saved.name} из потока воды! ${saved.name} получает +15 HP.`,
+            locationId,
+            importance: 0.9,
+            participants: [savior.id, saved.id],
+          })
+        }
+      }
+      pushEvent({
+        type: 'challenge_result',
+        title: `🌊 Потоп в ${loc.name}`,
+        text: `[ИСПЫТАНИЕ] ${text}`,
+        locationId,
+        importance: 0.95,
+        participants: all.map(a => a.id),
+      })
+      return
+    }
+
+    // ═══════ FIRE ═══════
+    const isFire = /пожар|огонь|пламя|горит/i.test(text)
+    if (isFire) {
+      if (loc.shelter) {
+        loc.shelter = false
+        pushEvent({
+          type: 'challenge_result',
+          title: `🔥💥 Укрытие в ${loc.name} СГОРЕЛО!`,
+          text: `Пожар уничтожил укрытие в ${loc.name}!`,
+          locationId,
+          importance: 0.9,
+          participants: all.map(a => a.id),
+        })
+      }
+      // Burn resources
+      const burnableKeys = Object.keys(loc.resources).filter(k => ['wood', 'cloth', 'driftwood'].includes(k))
+      for (const k of burnableKeys) {
+        const lost = Math.min(loc.resources[k] ?? 0, 2)
+        loc.resources[k] = Math.max(0, (loc.resources[k] ?? 0) - lost)
+      }
+      for (const a of agentsHere) {
+        const dmg = Math.floor(10 + Math.random() * 12)
+        a.health = clamp(a.health - dmg, 0, 100)
+        a.lastThought = 'Огонь! Всё горит!'
+        // Lose flammable items
+        const burnIdx = a.inventory.findIndex(i => ['wood', 'cloth', 'driftwood', 'torch'].includes(i))
+        if (burnIdx !== -1) a.inventory.splice(burnIdx, 1)
+        if (a.health <= 0) killAgent(a, `погиб в пожаре: ${loc.name}`)
+      }
+      pushEvent({
+        type: 'challenge_result',
+        title: `🔥 Пожар в ${loc.name}!`,
+        text: `${text}. Ресурсы сгорели, выжившие получили ожоги!`,
+        locationId,
+        importance: 0.95,
+        participants: all.map(a => a.id),
+      })
+      return
+    }
+
+    // ═══════ TREASURE ═══════
+    const isTreasure = /сокровищ|тайник|клад|ценн|предмет/i.test(text)
+    if (isTreasure && agentsHere.length > 0) {
+      const rnd = mulberry32(Date.now())
+      const treasureItems = ['gems', 'medicine', 'knife', 'rope', 'food', 'food', 'herbs', 'cloth']
+      const itemCount = 2 + Math.floor(rnd() * 3)
+      const foundItems: string[] = []
+      for (let i = 0; i < itemCount; i++) {
+        const item = pick(rnd, treasureItems)
+        foundItems.push(item)
+      }
+      // Distribute to agents
+      for (let i = 0; i < foundItems.length; i++) {
+        const recipient = agentsHere[i % agentsHere.length]!
+        recipient.inventory.push(foundItems[i]!)
+        if (recipient.inventory.length > 12) recipient.inventory.shift()
+      }
+      pushEvent({
+        type: 'discovery',
+        title: `💎 Тайник найден в ${loc.name}!`,
+        text: `Обнаружен тайник: ${foundItems.join(', ')}! Распределено между: ${agentsHere.map(a => a.name).join(', ')}.`,
+        locationId,
+        importance: 0.85,
+        participants: agentsHere.map(a => a.id),
+      })
+      return
+    }
+
+    // ═══════ COLLAPSE ═══════
+    const isCollapse = /обвал|разруш|рухнул/i.test(text)
+    if (isCollapse) {
+      if (loc.shelter) {
+        loc.shelter = false
+      }
+      for (const a of agentsHere) {
+        const dmg = Math.floor(12 + Math.random() * 10)
+        a.health = clamp(a.health - dmg, 0, 100)
+        a.lastThought = 'Обвал! Камни падают!'
+        if (a.health <= 0) killAgent(a, `погиб под обвалом: ${loc.name}`)
+      }
+      pushEvent({
+        type: 'challenge_result',
+        title: `🏚️ Обвал в ${loc.name}!`,
+        text: `${text} Укрытие разрушено! Пострадавшие: ${agentsHere.map(a => `${a.name}(${a.health}HP)`).join(', ')}.`,
+        locationId,
+        importance: 0.95,
+        participants: all.map(a => a.id),
+      })
+      return
+    }
+
+    // ═══════ HURRICANE / TORNADO ═══════
+    const isHurricane = /ураган|торнадо|смерч|ветер/i.test(text)
+    if (isHurricane) {
+      // Scatter agents to random neighbors
+      const nbs = neighbors(world, locationId)
+      for (const a of agentsHere) {
+        const dmg = Math.floor(6 + Math.random() * 10)
+        a.health = clamp(a.health - dmg, 0, 100)
+        if (nbs.length > 0 && Math.random() < 0.5) {
+          const newLoc = nbs[Math.floor(Math.random() * nbs.length)]!
+          const oldLocName = loc.name
+          a.locationId = newLoc
+          a.lastThought = `Ураган унёс меня из ${oldLocName}!`
+        }
+        if (a.health <= 0) killAgent(a, `погиб от урагана: ${loc.name}`)
+      }
+      if (loc.shelter) loc.shelter = false
+      pushEvent({
+        type: 'challenge_result',
+        title: `🌪️ Ураган в ${loc.name}!`,
+        text: `${text} Укрытие разрушено! Выживших раскидало по острову!`,
+        locationId,
+        importance: 0.95,
+        participants: all.map(a => a.id),
+      })
+      return
+    }
+
+    // ═══════ DEFAULT CHALLENGE ═══════
+    const isDangerous = /шторм|атак/i.test(text)
     if (isDangerous) {
       for (const a of agentsHere) {
         a.health = clamp(a.health - 8, 0, 100)
@@ -195,7 +470,7 @@ export function createEngine(opts: EngineOpts) {
       }
     }
     pushEvent({
-      type: 'world',
+      type: 'challenge_result',
       title: `⚡ Испытание: ${loc.name}`,
       text: `[ИСПЫТАНИЕ] ${text}`,
       locationId,
@@ -325,7 +600,132 @@ export function createEngine(opts: EngineOpts) {
       }
     }
 
-    // === AGENT DECISIONS ===
+    // === ★ RANDOM DISCOVERY EVENTS ===
+    if (tickCount % 12 === 0) {
+      const rnd = mulberry32(tickCount * 4231 + 17)
+      if (rnd() < 0.3) {
+        const aliveAgents = agents.filter(a => a.isAlive)
+        if (aliveAgents.length > 0) {
+          const lucky = pick(rnd, aliveAgents)
+          const loc = nodesById.get(lucky.locationId)
+          const discoveries = [
+            { title: '🍶 Бутылка с запиской!', text: `${lucky.name} нашёл бутылку с запиской: "На восточном берегу есть пресная вода..." Загадочно!`, item: 'water' },
+            { title: '🐾 Странные следы!', text: `${lucky.name} обнаружил огромные следы неизвестного существа в ${loc?.name ?? 'дикой местности'}. На острове что-то большое...`, item: null },
+            { title: '🏛️ Древние руины!', text: `${lucky.name} наткнулся на остатки древнего строения в ${loc?.name ?? 'джунглях'}! Кто жил здесь раньше?`, item: 'gems' },
+            { title: '🗺️ Старая карта!', text: `${lucky.name} нашёл выцветшую карту, нацарапанную на камне в ${loc?.name ?? 'пещере'}. На ней отмечено какое-то место...`, item: 'cloth' },
+            { title: '🦴 Кости!', text: `${lucky.name} обнаружил старые кости в ${loc?.name ?? 'на берегу'}. Кто-то был здесь до нас... и не выжил.`, item: null },
+            { title: '🌿 Лечебный источник!', text: `${lucky.name} нашёл горячий источник в ${loc?.name ?? 'глубине острова'}! Вода обладает целебными свойствами. +10 HP!`, item: 'herbs' },
+          ]
+          const disc = pick(rnd, discoveries)
+          if (disc.item) {
+            lucky.inventory.push(disc.item)
+            if (lucky.inventory.length > 12) lucky.inventory.shift()
+          }
+          if (disc.title.includes('источник')) {
+            lucky.health = clamp(lucky.health + 10, 0, 100)
+          }
+          lucky.lastThought = disc.title.replace(/[!]/g, '...')
+          pushEvent({
+            type: 'discovery',
+            title: disc.title,
+            text: disc.text,
+            locationId: lucky.locationId,
+            importance: 0.65,
+            participants: [lucky.id],
+          })
+        }
+      }
+    }
+
+    // === ★ ALLIANCE SYSTEM ===
+    if (tickCount % 10 === 0) {
+      const rnd = mulberry32(tickCount * 6143)
+      const aliveAgents = agents.filter(a => a.isAlive)
+      for (let i = 0; i < aliveAgents.length; i++) {
+        for (let j = i + 1; j < aliveAgents.length; j++) {
+          const a = aliveAgents[i]!, b = aliveAgents[j]!
+          const rel = relCache.get(`${a.id}:${b.id}`)
+          if (rel && rel.affinity > 0.55 && rel.trust > 0.4 && rnd() < 0.25) {
+            // Form alliance — boost stats
+            a.health = clamp(a.health + 3, 0, 100)
+            b.health = clamp(b.health + 3, 0, 100)
+            bumpRelation(relations, a.id, b.id, 0.05, 0.08)
+            rebuildRelCache()
+            pushEvent({
+              type: 'alliance',
+              title: `🤝 Альянс: ${a.name} & ${b.name}!`,
+              text: `${a.name} и ${b.name} заключили союз! Они доверяют друг другу и координируют действия. Оба получают +3 HP.`,
+              participants: [a.id, b.id],
+              locationId: a.locationId,
+              importance: 0.7,
+            })
+          }
+        }
+      }
+    }
+
+    // === ★ RANDOM BEAST ENCOUNTER ===
+    if (tickCount % 18 === 0 && getDayPhase() === 'night') {
+      const rnd = mulberry32(tickCount * 8887)
+      if (rnd() < 0.2) {
+        const occupiedNodes = world.nodes.filter(n => agents.some(a => a.isAlive && a.locationId === n.id))
+        if (occupiedNodes.length > 0) {
+          const targetNode = pick(rnd, occupiedNodes)
+          const beastNames = ['дикий кабан', 'гигантская змея', 'стая волков', 'медведь', 'пантера']
+          const beast = pick(rnd, beastNames)
+          pushEvent({
+            type: 'beast_fight',
+            title: `🐺 Ночной хищник!`,
+            text: `В темноте ${targetNode.name} появился ${beast}! Агенты в опасности!`,
+            locationId: targetNode.id,
+            importance: 0.8,
+            participants: agents.filter(a => a.isAlive && a.locationId === targetNode.id).map(a => a.id),
+          })
+          // Simulate quick fight
+          const heroesHere = agents.filter(a => a.isAlive && a.locationId === targetNode.id)
+          if (heroesHere.length > 0) {
+            const best = heroesHere.sort((a, b) => b.skills.combat.level + b.traits.aggression - a.skills.combat.level - a.traits.aggression)[0]!
+            const dmg = Math.floor(4 + rnd() * 8)
+            best.health = clamp(best.health - dmg, 0, 100)
+            addSkillXP(best, 'combat', 12)
+            if (rnd() < 0.6) {
+              best.inventory.push('food')
+              if (best.inventory.length > 12) best.inventory.shift()
+            }
+            pushEvent({
+              type: 'beast_fight',
+              title: `⚔️ ${best.name} отбил атаку ${beast}!`,
+              text: `${best.name} защитил лагерь от ${beast}! -${dmg} HP (${best.health}/100). ${rnd() < 0.6 ? 'Добыл мясо!' : ''}`,
+              locationId: targetNode.id,
+              importance: 0.75,
+              participants: heroesHere.map(a => a.id),
+            })
+            if (best.health <= 0) killAgent(best, `убит ${beast} ночью`)
+          }
+        }
+      }
+    }
+
+    // === ★ NIGHT SOUNDS & ATMOSPHERE ===
+    if (getDayPhase() === 'night' && tickCount % 6 === 0) {
+      const rnd = mulberry32(tickCount * 1289)
+      if (rnd() < 0.15) {
+        const sounds = [
+          'Странные крики разносятся над островом... Что-то бродит во тьме.',
+          'Земля слегка дрожит. Вулканическая активность?',
+          'На горизонте мелькнул свет! Корабль?.. Нет, показалось.',
+          'Из джунглей доносится жуткий вой. Животные чего-то боятся.',
+          'Небо озарилось зелёным сиянием. Полярное сияние посреди тропиков?!',
+        ]
+        pushEvent({
+          type: 'world',
+          title: '🌙 Ночной остров',
+          text: pick(rnd, sounds),
+          importance: 0.4,
+          participants: agents.filter(a => a.isAlive).map(a => a.id),
+        })
+      }
+    }
     const recent = feed.slice(-20)
     for (let idx = 0; idx < agents.length; idx++) {
       const agent = agents[idx]!

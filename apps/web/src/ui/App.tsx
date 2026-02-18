@@ -8,8 +8,7 @@ import { ControlPanel } from './ControlPanel'
 type Toast = { id: string; text: string; type: string; ts: number }
 
 export function App() {
-  const [token, setToken] = useState(() => localStorage.getItem('app_token') ?? '')
-  const { state, connected, setSpeed, injectEvent, sendMessage, setGoal, sendChallenge } = useWorld(undefined, token)
+  const { state, connected, setSpeed, injectEvent, sendMessage, setGoal, sendChallenge } = useWorld()
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId | null>(null)
   const [selectedLocationId, setSelectedLocationId] = useState<LocationId | null>(null)
   const [mode, setMode] = useState<'map' | 'relations'>('map')
@@ -141,10 +140,6 @@ export function App() {
       <div className="hidden lg:flex flex-col w-[380px] flex-shrink-0 border-l" style={{ borderColor: '#1a2a3e', background: 'linear-gradient(180deg, #0c1a2b 0%, #081420 100%)' }}>
         <div className="h-12 flex items-center justify-between px-4 border-b" style={{ borderColor: '#1a2a3e', background: '#0a1525' }}>
           <span className="font-bold text-xs text-cyan-300 tracking-wider uppercase">📋 ДОСЬЕ</span>
-          <input type="password" value={token}
-            onChange={(e) => { setToken(e.target.value); localStorage.setItem('app_token', e.target.value) }}
-            placeholder="Ключ..."
-            className="border rounded px-2 py-1 text-xs w-24 text-gray-300 focus:outline-none transition-colors" style={{ background: '#0a1525', borderColor: '#1a2a3e' }} />
         </div>
         <div className="flex-1 overflow-hidden flex flex-col">
           <Inspector state={state} selectedAgent={selectedAgent} selectedLocation={selectedLocation} onPickAgent={setSelectedAgentId} setGoal={setGoal} sendChallenge={sendChallenge} />
@@ -589,6 +584,6 @@ function fmtTime(ts: number) { return new Date(ts).toLocaleTimeString('ru-RU', {
 function moodLabel(m: { valence: number; arousal: number }) { if (m.valence > 0.35 && m.arousal > 0.2) return 'Воодушевлён'; if (m.valence > 0.35) return 'Спокоен'; if (m.valence < -0.35 && m.arousal > 0.2) return 'В панике'; if (m.valence < -0.35) return 'Подавлен'; if (m.arousal > 0.35) return 'Тревога'; return 'В норме' }
 function moodColor(valence: number) { if (valence >= 0.5) return '#10b981'; if (valence >= 0.15) return '#34d399'; if (valence > -0.15) return '#3b82f6'; if (valence > -0.5) return '#f59e0b'; return '#ef4444' }
 function affinityGradient(a: number) { if (a >= 0.5) return 'linear-gradient(90deg, #10b981, #059669)'; if (a >= 0.15) return 'linear-gradient(90deg, #34d399, #10b981)'; if (a > -0.15) return 'linear-gradient(90deg, #3b82f6, #2563eb)'; if (a > -0.5) return 'linear-gradient(90deg, #f59e0b, #d97706)'; return 'linear-gradient(90deg, #ef4444, #dc2626)' }
-function eventColor(type: string) { const m: Record<string, string> = { attack: '#ef4444', death: '#dc2626', message: '#3b82f6', gather: '#22c55e', explore: '#10b981', craft: '#eab308', build: '#f59e0b', heal: '#ec4899', trade: '#a855f7', eat: '#f97316', weather: '#06b6d4', night: '#6366f1', world: '#f59e0b', rest: '#6b7280', goal: '#0ea5e9', move: '#475569', summarize: '#475569' }; return m[type] ?? '#475569' }
+function eventColor(type: string) { const m: Record<string, string> = { attack: '#ef4444', death: '#dc2626', message: '#3b82f6', gather: '#22c55e', explore: '#10b981', craft: '#eab308', build: '#f59e0b', heal: '#ec4899', trade: '#a855f7', eat: '#f97316', weather: '#06b6d4', night: '#6366f1', world: '#f59e0b', rest: '#6b7280', goal: '#0ea5e9', move: '#475569', summarize: '#475569', beast_fight: '#f97316', challenge_result: '#a855f7', alliance: '#10b981', discovery: '#eab308', heroic: '#f59e0b' }; return m[type] ?? '#475569' }
 function itemEmoji(item: string) { const m: Record<string, string> = { wood: '🪵', stone: '🪨', food: '🍖', fruit: '🍎', fish: '🐟', shellfish: '🦐', herbs: '🌿', water: '💧', driftwood: '🪵', cloth: '🧵', gems: '💎', ore: '⛏️', axe: '🪓', medicine: '💊', fishing_rod: '🎣', torch: '🔥', knife: '🔪', rope: '🪢' }; return m[item] ?? '📦' }
-function actionLabelRu(type: string) { const m: Record<string, string> = { rest: 'Отдых', move: 'Движение', message: 'Говорит', attack: 'Бой', gather: 'Собирает', explore: 'Разведка', craft: 'Крафт', eat: 'Ест', build: 'Строит', trade: 'Торгует', heal: 'Лечит', goal: 'Цель', summarize: 'Думает', death: 'Смерть', weather: 'Погода', world: 'Событие' }; return m[type] ?? type }
+function actionLabelRu(type: string) { const m: Record<string, string> = { rest: 'Отдых', move: 'Движение', message: 'Говорит', attack: 'Бой', gather: 'Собирает', explore: 'Разведка', craft: 'Крафт', eat: 'Ест', build: 'Строит', trade: 'Торгует', heal: 'Лечит', goal: 'Цель', summarize: 'Думает', death: 'Смерть', weather: 'Погода', world: 'Событие', beast_fight: 'Зверь!', challenge_result: 'Испытание', alliance: 'Альянс', discovery: 'Находка', heroic: 'Герой!' }; return m[type] ?? type }

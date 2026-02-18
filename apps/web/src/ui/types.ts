@@ -91,6 +91,11 @@ export type WorldEventType =
   | 'death'
   | 'weather'
   | 'night'
+  | 'beast_fight'
+  | 'challenge_result'
+  | 'alliance'
+  | 'discovery'
+  | 'heroic'
 
 export type EventEnvelope = {
   id: string
