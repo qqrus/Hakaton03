@@ -1,24 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import ForceGraph2D from 'react-force-graph-2d'
-import type { AgentId, AgentState, Relation, WorldState } from './types'
-import { useElementSize } from './useElementSize'
-
-type GraphNode = {
-  id: AgentId
-  name: string
-  role: string
-  faction: string
-  mood: { valence: number; arousal: number }
-  x?: number
-  y?: number
-}
-
-type GraphLink = {
-  source: AgentId
-  target: AgentId
-  affinity: number
-  trust: number
-}
+import type { AgentId, WorldState } from './types'
 
 export function InteractiveRelationGraph(props: {
   state: WorldState
@@ -26,139 +8,104 @@ export function InteractiveRelationGraph(props: {
   onPickAgent: (id: AgentId | null) => void
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null)
-  const size = useElementSize(wrapRef)
-  const fgRef = useRef<any>(null)
+  const [dims, setDims] = useState({ w: 600, h: 400 })
 
-  const [showPos, setShowPos] = useState(true)
-  const [showNeg, setShowNeg] = useState(true)
-  const [minAbsAffinity, setMinAbsAffinity] = useState(0)
-  const [focusName, setFocusName] = useState('')
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const obs = new ResizeObserver((entries) => {
+      const e = entries[0]
+      if (e) setDims({ w: e.contentRect.width, h: e.contentRect.height })
+    })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
 
-  const graph = useMemo(() => {
-    const nodes: GraphNode[] = props.state.agents.map((a, i) => ({
+  const graphData = useMemo(() => {
+    const nodes = props.state.agents.map((a) => ({
       id: a.id,
       name: a.name,
+      emoji: a.emoji,
       role: a.role,
-      faction: a.faction,
+      isAlive: a.isAlive,
+      health: a.health,
       mood: a.mood,
-      x: Math.cos((i / Math.max(1, props.state.agents.length)) * Math.PI * 2) * 160,
-      y: Math.sin((i / Math.max(1, props.state.agents.length)) * Math.PI * 2) * 160,
+      _color: a.isAlive ? moodColor(a.mood.valence) : '#4b5563',
     }))
-    const linksAll: GraphLink[] = props.state.relations.map((r) => ({
+    const links = props.state.relations.map((r) => ({
       source: r.a,
       target: r.b,
       affinity: r.affinity,
       trust: r.trust,
+      color: r.affinity >= 0.3 ? '#22c55e' : r.affinity <= -0.3 ? '#ef4444' : '#6b7280',
+      width: Math.max(1, Math.abs(r.affinity) * 4),
     }))
-    const links = linksAll.filter((l) => {
-      const pos = l.affinity >= 0
-      const neg = l.affinity < 0
-      const passSign = (pos && showPos) || (neg && showNeg)
-      const passAbs = Math.abs(l.affinity) >= minAbsAffinity
-      return passSign && passAbs
-    })
     return { nodes, links }
-  }, [props.state.agents, props.state.relations, showPos, showNeg, minAbsAffinity])
+  }, [props.state.agents, props.state.relations])
 
-  useEffect(() => {
-    const fg = fgRef.current
-    if (!fg) return
-    if (size.w > 0 && size.h > 0) {
-      const t = setTimeout(() => fg.zoomToFit?.(600, 60), 300)
-      return () => clearTimeout(t)
-    }
-  }, [size.w, size.h, graph.nodes.length, graph.links.length])
+  const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D, _globalScale: number) => {
+    const x = node.x ?? 0
+    const y = node.y ?? 0
+    const r = 12
+    const isSel = props.selectedAgentId === node.id
 
-  useEffect(() => {
-    if (!focusName.trim()) return
-    const node = graph.nodes.find((n) => n.name.toLowerCase().includes(focusName.trim().toLowerCase()))
-    if (node && fgRef.current) {
-      fgRef.current.centerAt(node.x ?? 0, node.y ?? 0, 600)
-      fgRef.current.zoom(4, 600)
+    // Glow
+    ctx.save()
+    ctx.shadowColor = node._color
+    ctx.shadowBlur = isSel ? 20 : 10
+    ctx.beginPath()
+    ctx.fillStyle = node._color
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+
+    // Border
+    ctx.beginPath()
+    ctx.strokeStyle = isSel ? '#ffd700' : '#1e293b'
+    ctx.lineWidth = isSel ? 3 : 1.5
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.stroke()
+
+    // Emoji
+    ctx.font = '14px serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(node.emoji, x, y)
+
+    // Name
+    ctx.font = 'bold 10px Inter, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillStyle = node.isAlive ? '#e5e7eb' : '#6b7280'
+    ctx.fillText(node.name, x, y + r + 4)
+
+    if (!node.isAlive) {
+      ctx.font = 'bold 8px sans-serif'
+      ctx.fillStyle = '#ef4444'
+      ctx.fillText('💀', x, y - r - 8)
     }
-  }, [focusName])
+  }, [props.selectedAgentId])
 
   return (
-    <div className="w-full h-full bg-[#1a1510] relative" ref={wrapRef}>
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-parchment-100/95 px-3 py-2 rounded-lg shadow-lg border border-parchment-300 backdrop-blur">
-        <label className="flex items-center gap-1 text-xs font-bold text-ink-700">
-          <input type="checkbox" checked={showPos} onChange={(e) => setShowPos(e.target.checked)} />
-          Позитивные
-        </label>
-        <label className="flex items-center gap-1 text-xs font-bold text-ink-700">
-          <input type="checkbox" checked={showNeg} onChange={(e) => setShowNeg(e.target.checked)} />
-          Негативные
-        </label>
-        <label className="flex items-center gap-2 text-xs font-bold text-ink-700">
-          Мин. связь
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={minAbsAffinity}
-            onChange={(e) => setMinAbsAffinity(Number(e.target.value))}
-          />
-        </label>
-        <input
-          type="text"
-          placeholder="Поиск агента..."
-          value={focusName}
-          onChange={(e) => setFocusName(e.target.value)}
-          className="bg-parchment-50 border border-parchment-300 rounded px-2 py-1 text-xs focus:outline-none focus:border-ink-600"
-        />
-      </div>
-
+    <div ref={wrapRef} className="w-full h-full bg-ocean-900">
       <ForceGraph2D
-        ref={fgRef}
-        width={Math.max(1, size.w)}
-        height={Math.max(1, size.h)}
-        graphData={graph as any}
-        cooldownTicks={90}
-        linkWidth={(l: any) => 1 + Math.abs(l.affinity) * 3 + (props.selectedAgentId && (l.source === props.selectedAgentId || l.target === props.selectedAgentId) ? 1.5 : 0)}
-        linkColor={(l: any) => affinityColor(l.affinity)}
-        linkDirectionalParticles={(l: any) => (l.trust > 0.65 ? 2 : 0)}
-        linkDirectionalParticleWidth={2}
-        nodeRelSize={7}
-        backgroundColor="#1a1510"
-        onNodeClick={(n: any) => props.onPickAgent(n.id)}
-        nodeCanvasObject={(node: any, ctx, globalScale) => {
-          const r = 8 / globalScale
-          const selected = node.id === props.selectedAgentId
-          if (selected) {
-            ctx.shadowBlur = 15
-            ctx.shadowColor = '#ffffff'
-          } else {
-            ctx.shadowBlur = 0
-          }
-
+        width={dims.w}
+        height={dims.h}
+        graphData={graphData}
+        nodeCanvasObject={nodeCanvasObject}
+        nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
           ctx.beginPath()
-          ctx.fillStyle = moodColor(node.mood?.valence ?? 0)
-          ctx.arc(node.x, node.y, r, 0, 2 * Math.PI)
+          ctx.fillStyle = color
+          ctx.arc(node.x ?? 0, node.y ?? 0, 16, 0, Math.PI * 2)
           ctx.fill()
-
-          ctx.beginPath()
-          ctx.strokeStyle = '#1a1510'
-          ctx.lineWidth = 1.5 / globalScale
-          ctx.arc(node.x, node.y, r, 0, 2 * Math.PI)
-          ctx.stroke()
-
-          ctx.shadowBlur = 0
-          if (selected) {
-            ctx.beginPath()
-            ctx.strokeStyle = '#ffffff'
-            ctx.lineWidth = 2 / globalScale
-            ctx.arc(node.x, node.y, r + 4 / globalScale, 0, 2 * Math.PI)
-            ctx.stroke()
-          }
-
-          const fontSize = 14 / globalScale
-          ctx.font = `bold ${fontSize}px "Merriweather", serif`
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'top'
-          ctx.fillStyle = '#e6dec8'
-          ctx.fillText(node.name, node.x, node.y + r + 4 / globalScale)
         }}
+        onNodeClick={(node: any) => props.onPickAgent(node.id)}
+        linkColor={(link: any) => link.color}
+        linkWidth={(link: any) => link.width}
+        linkDirectionalParticles={2}
+        linkDirectionalParticleWidth={2}
+        backgroundColor="rgba(0,0,0,0)"
+        cooldownTime={3000}
       />
     </div>
   )
@@ -170,14 +117,4 @@ function moodColor(valence: number) {
   if (valence > -0.15) return '#60a5fa'
   if (valence > -0.5) return '#f59e0b'
   return '#ef4444'
-}
-
-function affinityColor(a: number) {
-  const t = Math.max(-1, Math.min(1, a))
-  // Map -1..0..1 to red..blue..green with parchment-friendly tones
-  if (t >= 0.55) return '#16a34a'
-  if (t >= 0.2) return '#65a30d'
-  if (t > -0.2) return '#2563eb'
-  if (t > -0.55) return '#d97706'
-  return '#dc2626'
 }

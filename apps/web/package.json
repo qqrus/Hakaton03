@@ -9,6 +9,7 @@
     "preview": "vite preview --port 5173"
   },
   "dependencies": {
+    "noisejs": "^2.1.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-force-graph-2d": "^1.27.1"

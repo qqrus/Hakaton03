@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { EventEnvelope, WorldState } from './types'
+import type { AgentId, EventEnvelope, LocationId, WorldState } from './types'
 
 type Msg =
   | { type: 'state'; data: WorldState }
@@ -24,65 +24,56 @@ export function useWorld(apiBase?: string, token?: string) {
       headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
     })
       .then((r) => r.json())
-      .then((s) => {
-        if (alive) setState(s)
-      })
+      .then((s) => { if (alive) setState(s) })
       .catch(() => null)
-    return () => {
-      alive = false
-    }
+    return () => { alive = false }
   }, [base, authToken])
 
   useEffect(() => {
-    let stopped = false
-    let t: any = null
+    let alive = true
+    let ws: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-    const connect = () => {
-      if (stopped) return
-      const ws = new WebSocket(wsUrlWithToken)
+    function connect() {
+      if (!alive) return
+      ws = new WebSocket(wsUrlWithToken)
       wsRef.current = ws
-      ws.onopen = () => {
-        retryRef.current = 0
-        setConnected(true)
-      }
+      ws.onopen = () => { setConnected(true); retryRef.current = 0 }
       ws.onclose = () => {
         setConnected(false)
         wsRef.current = null
-        if (stopped) return
-        const attempt = Math.min(10, retryRef.current++)
-        const backoff = Math.min(15000, 600 * Math.pow(2, attempt))
-        t = setTimeout(connect, backoff)
-      }
-      ws.onerror = () => {
-        setConnected(false)
-      }
-      ws.onmessage = (ev) => {
-        const msg = safeJson(ev.data)
-        if (!msg) return
-        const m = msg as Msg
-        if (m.type === 'state') setState(m.data)
-        if (m.type === 'event') {
-          setState((prev) => {
-            if (!prev) return prev
-            const next = { ...prev, feed: [...prev.feed, m.data] }
-            if (next.feed.length > 240) next.feed = next.feed.slice(-240)
-            return next
-          })
+        if (alive) {
+          const delay = Math.min(1000 * 2 ** retryRef.current, 8000)
+          retryRef.current++
+          reconnectTimer = setTimeout(connect, delay)
         }
+      }
+      ws.onerror = () => ws?.close()
+      ws.onmessage = (ev) => {
+        try {
+          const msg: Msg = JSON.parse(ev.data)
+          if (msg.type === 'state') setState(msg.data)
+          else if (msg.type === 'event') {
+            setState((prev) => {
+              if (!prev) return prev
+              const feed = [...prev.feed, msg.data].slice(-220)
+              return { ...prev, feed }
+            })
+          }
+        } catch { /* ignore */ }
       }
     }
 
     connect()
     return () => {
-      stopped = true
-      if (t) clearTimeout(t)
-      wsRef.current?.close()
-      wsRef.current = null
+      alive = false
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      ws?.close()
     }
   }, [wsUrlWithToken])
 
-  async function post(path: string, body: unknown) {
-    await fetch(`${base}${path}`, {
+  function apiPost(path: string, body: any) {
+    return fetch(`${base}${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -92,21 +83,11 @@ export function useWorld(apiBase?: string, token?: string) {
     }).catch(() => null)
   }
 
-  return {
-    state,
-    connected,
-    setSpeed: (speed: number) => post('/api/control/speed', { speed }),
-    injectEvent: (text: string) => post('/api/control/event', { text }),
-    sendMessage: (agentId: string, text: string) => post('/api/control/message', { agentId, text }),
-  }
-}
+  const setSpeed = (speed: number) => apiPost('/api/control/speed', { speed })
+  const injectEvent = (text: string) => apiPost('/api/control/event', { text })
+  const sendMessage = (agentId: AgentId, text: string) => apiPost('/api/control/message', { agentId, text })
+  const setGoal = (agentId: AgentId, goal: string) => apiPost('/api/control/goal', { agentId, goal })
+  const sendChallenge = (locationId: LocationId, text: string) => apiPost('/api/control/challenge', { locationId, text })
 
-function safeJson(data: any) {
-  if (typeof data !== 'string') return null
-  try {
-    return JSON.parse(data)
-  } catch {
-    return null
-  }
+  return { state, connected, setSpeed, injectEvent, sendMessage, setGoal, sendChallenge }
 }
-

@@ -72,6 +72,30 @@ app.post('/api/control/message', (req, res) => {
   res.json({ ok: true })
 })
 
+const goalSchema = z.object({
+  agentId: z.string().min(1),
+  goal: z.string().min(1).max(300),
+})
+app.post('/api/control/goal', (req, res) => {
+  if (!checkBearer(req.headers.authorization, appToken)) return res.status(401).json({ error: 'unauthorized' })
+  const parsed = goalSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request' })
+  engine.setAgentGoal(parsed.data.agentId, parsed.data.goal)
+  res.json({ ok: true })
+})
+
+const challengeSchema = z.object({
+  locationId: z.string().min(1),
+  text: z.string().min(1).max(500),
+})
+app.post('/api/control/challenge', (req, res) => {
+  if (!checkBearer(req.headers.authorization, appToken)) return res.status(401).json({ error: 'unauthorized' })
+  const parsed = challengeSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request' })
+  engine.injectLocationChallenge(parsed.data.locationId, parsed.data.text)
+  res.json({ ok: true })
+})
+
 app.get('/api/debug/trace', async (req, res) => {
   if (!checkBearer(req.headers.authorization, appToken)) return res.status(401).json({ error: 'unauthorized' })
   const tail = Math.max(1, Math.min(500, Number(req.query.tail ?? 120)))

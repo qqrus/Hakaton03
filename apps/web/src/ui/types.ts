@@ -3,19 +3,19 @@ export type LocationId = string
 
 export type Mood = { valence: number; arousal: number }
 
-export type AgentRole = 'Strategist' | 'Diplomat' | 'Spy' | 'Quartermaster' | 'Warlord'
+export type AgentRole = 'Scout' | 'Medic' | 'Builder' | 'Hunter' | 'Leader'
 
 export type AgentState = {
   id: AgentId
   name: string
   role: AgentRole
   avatarSeed: string
-  faction: string
+  emoji: string
   traits: {
     empathy: number
     aggression: number
-    greed: number
-    discipline: number
+    resourcefulness: number
+    endurance: number
     curiosity: number
   }
   profile: {
@@ -26,17 +26,38 @@ export type AgentState = {
   locationId: LocationId
   mood: Mood
   goal: string
+  health: number
+  hunger: number
+  inventory: string[]
+  isAlive: boolean
   lastActionAt: number
+  skills: {
+    gathering: { level: number; xp: number }
+    crafting: { level: number; xp: number }
+    combat: { level: number; xp: number }
+    medicine: { level: number; xp: number }
+    building: { level: number; xp: number }
+  }
+  lastThought: string
+  deathLog?: {
+    cause: string
+    day: number
+    survivalTime: number
+    totalActions: number
+  }
 }
+
+export type LocationKind = 'beach' | 'jungle' | 'mountain' | 'cave' | 'lake' | 'camp'
 
 export type LocationNode = {
   id: LocationId
   name: string
   x: number
   y: number
-  kind: 'town' | 'ruins' | 'pass' | 'mine' | 'port' | 'forest'
+  kind: LocationKind
   resources: Record<string, number>
-  ownerFaction: string | null
+  shelter: boolean
+  chest: string[]
 }
 
 export type WorldGraph = {
@@ -49,9 +70,11 @@ export type WorldGraph = {
 
 export type Relation = { a: AgentId; b: AgentId; affinity: number; trust: number }
 
+export type DayPhase = 'dawn' | 'day' | 'dusk' | 'night'
+export type Weather = 'clear' | 'rain' | 'storm' | 'fog'
+
 export type WorldEventType =
   | 'world'
-  | 'control'
   | 'move'
   | 'message'
   | 'attack'
@@ -59,6 +82,15 @@ export type WorldEventType =
   | 'rest'
   | 'goal'
   | 'summarize'
+  | 'craft'
+  | 'eat'
+  | 'build'
+  | 'explore'
+  | 'trade'
+  | 'heal'
+  | 'death'
+  | 'weather'
+  | 'night'
 
 export type EventEnvelope = {
   id: string
@@ -74,9 +106,12 @@ export type EventEnvelope = {
 export type WorldState = {
   now: number
   speed: number
+  tick: number
+  day: number
+  dayPhase: DayPhase
+  weather: Weather
   world: WorldGraph
   agents: AgentState[]
   relations: Relation[]
   feed: EventEnvelope[]
 }
-

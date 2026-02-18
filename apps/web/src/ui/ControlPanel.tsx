@@ -1,90 +1,85 @@
 import { useState } from 'react'
-import type { AgentState } from './types'
+import type { AgentId, AgentState } from './types'
 
-export function ControlPanel(props: {
-  onInjectEvent: (text: string) => Promise<any>
-  onSendMessage: (agentId: string, text: string) => Promise<any>
-  selectedAgentId: string | null
+interface ControlPanelProps {
+  onInjectEvent: (text: string) => void
+  onSendMessage: (agentId: AgentId, text: string) => void
+  onSetGoal: (agentId: AgentId, goal: string) => void
+  selectedAgentId: AgentId | null
   agents: AgentState[]
-}) {
-  const [eventText, setEventText] = useState('')
-  const [msgText, setMsgText] = useState('')
-  const [isSending, setIsSending] = useState(false)
+}
 
-  const handleInject = async () => {
-    if (!eventText.trim()) return
-    setIsSending(true)
-    try {
-      await props.onInjectEvent(eventText)
-      setEventText('')
-    } finally {
-      setIsSending(false)
-    }
-  }
+const PRESET_EVENTS = [
+  { emoji: '⛈️', label: 'Шторм', text: 'Мощный шторм обрушивается на остров!' },
+  { emoji: '🐻', label: 'Хищник', text: 'Дикий зверь замечен у лагеря!' },
+  { emoji: '💎', label: 'Клад', text: 'Найден тайник с ценными предметами!' },
+  { emoji: '🚢', label: 'Обломки', text: 'Волны прибили обломки корабля!' },
+  { emoji: '🌊', label: 'Потоп', text: 'Уровень воды поднимается!' },
+  { emoji: '🏥', label: 'Аптечка', text: 'Найдена аптечка с медикаментами!' },
+]
 
-  const handleMessage = async () => {
-    if (!msgText.trim() || !props.selectedAgentId) return
-    setIsSending(true)
-    try {
-      await props.onSendMessage(props.selectedAgentId, msgText)
-      setMsgText('')
-    } finally {
-      setIsSending(false)
-    }
-  }
+export function ControlPanel(props: ControlPanelProps) {
+  const [eventInput, setEventInput] = useState('')
+  const [msgInput, setMsgInput] = useState('')
+  const [busy, setBusy] = useState(false)
 
   const selectedAgent = props.agents.find(a => a.id === props.selectedAgentId)
 
+  async function inject(text: string) {
+    setBusy(true)
+    try { props.onInjectEvent(text) } finally { setBusy(false) }
+    setEventInput('')
+  }
+
+  async function send(agentId: AgentId) {
+    setBusy(true)
+    try { props.onSendMessage(agentId, msgInput) } finally { setBusy(false) }
+    setMsgInput('')
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="text-xs font-bold text-ink-500 uppercase tracking-widest mb-2">Управление Миром</div>
-      
-      {/* World Event Injection */}
-      <div className="space-y-2">
-        <label className="text-xs font-bold text-ink-700">Событие Мира</label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={eventText}
-            onChange={(e) => setEventText(e.target.value)}
-            placeholder="Например: Найден древний клад!"
-            className="flex-1 bg-parchment-50 border border-parchment-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-ink-600 placeholder:text-ink-400/50"
-            onKeyDown={(e) => e.key === 'Enter' && handleInject()}
-          />
-          <button
-            onClick={handleInject}
-            disabled={isSending || !eventText.trim()}
-            className="px-3 py-1 bg-ink-800 text-parchment-100 rounded text-xs font-bold uppercase tracking-wide hover:bg-ink-700 disabled:opacity-50 transition-colors"
-          >
-            ⚡
+    <div className="space-y-3">
+      {/* Quick Events */}
+      <div>
+        <div className="text-[9px] font-bold text-gray-500 uppercase tracking-[0.15em] mb-1.5">⚡ СОБЫТИЯ</div>
+        <div className="grid grid-cols-3 gap-1">
+          {PRESET_EVENTS.map(ev => (
+            <button key={ev.label} onClick={() => inject(ev.text)} disabled={busy}
+              className="text-[10px] py-1.5 px-1 rounded-md border font-bold transition-all hover:scale-[1.02] disabled:opacity-30"
+              style={{ background: '#0c1a2b', borderColor: '#1a2a3e', color: '#9cb8d4' }}>
+              {ev.emoji} {ev.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Custom Event */}
+      <div>
+        <div className="text-[9px] font-bold text-gray-500 uppercase tracking-[0.15em] mb-1">🌍 СВОЁ СОБЫТИЕ</div>
+        <div className="flex gap-1">
+          <input value={eventInput} onChange={e => setEventInput(e.target.value)} placeholder="Описание..."
+            className="flex-1 border rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none transition-colors" style={{ background: '#0a1525', borderColor: '#1a2a3e' }} />
+          <button onClick={() => inject(eventInput)} disabled={!eventInput.trim() || busy}
+            className="px-3 py-1.5 rounded text-xs font-bold text-white disabled:opacity-30 transition-all" style={{ background: 'linear-gradient(135deg, #0d9488, #0891b2)' }}>
+            ▶
           </button>
         </div>
       </div>
 
-      {/* Direct Message to Agent */}
-      <div className="space-y-2">
-        <label className="text-xs font-bold text-ink-700">
-            Сообщение {selectedAgent ? `для ${selectedAgent.name}` : '(выберите агента)'}
-        </label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={msgText}
-            onChange={(e) => setMsgText(e.target.value)}
-            placeholder={selectedAgent ? "Голос свыше..." : "Сначала выберите агента"}
-            disabled={!selectedAgent}
-            className="flex-1 bg-parchment-50 border border-parchment-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-ink-600 placeholder:text-ink-400/50 disabled:bg-parchment-200/50"
-            onKeyDown={(e) => e.key === 'Enter' && handleMessage()}
-          />
-          <button
-            onClick={handleMessage}
-            disabled={isSending || !msgText.trim() || !selectedAgent}
-            className="px-3 py-1 bg-magic-blue text-white rounded text-xs font-bold uppercase tracking-wide hover:bg-blue-600 disabled:opacity-50 transition-colors"
-          >
-            ✉
-          </button>
+      {/* Message to Agent */}
+      {selectedAgent && selectedAgent.isAlive && (
+        <div>
+          <div className="text-[9px] font-bold text-gray-500 uppercase tracking-[0.15em] mb-1">💬 {selectedAgent.emoji} {selectedAgent.name}</div>
+          <div className="flex gap-1">
+            <input value={msgInput} onChange={e => setMsgInput(e.target.value)} placeholder={`Написать ${selectedAgent.name}...`}
+              className="flex-1 border rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none transition-colors" style={{ background: '#0a1525', borderColor: '#1a2a3e' }} />
+            <button onClick={() => send(selectedAgent.id)} disabled={!msgInput.trim() || busy}
+              className="px-3 py-1.5 rounded text-xs font-bold text-white disabled:opacity-30 transition-all" style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)' }}>
+              ✉
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
