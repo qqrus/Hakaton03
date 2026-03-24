@@ -12,9 +12,12 @@
 2. Добавьте в него следующий код, подставив ваш реальный API ключ (если он у вас есть, или используйте тот, что предоставлен организаторами/разработчиками):
 
 ```env
-OPENROUTER_API_KEY=ваш_api_ключ_здесь
+DATABASE_URL=postgresql://postgres:postgres@db:5432/razum
+SECRET_KEY=yoursecretkeyhere
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+NEXT_PUBLIC_API_URL=http://localhost:8000/api
 ```
-
+ФАЙЛ С СОДЕРЖИМЫМ .env БУДЕТ ОТПРАВЛЕН ВМЕСТЕ С РАБОТОЙ
 ---
 
 ## 🚀 Быстрый запуск (One-command Deployment)
