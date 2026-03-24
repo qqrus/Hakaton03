@@ -53,6 +53,7 @@ class Participation(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     event_id = Column(Integer, ForeignKey("events.id"))
     status = Column(String, default="pending") # pending, confirmed, rejected
+    created_at = Column(DateTime, default=datetime.utcnow)
     confirmed_at = Column(DateTime, nullable=True)
     
     user = relationship("User", back_populates="participations")

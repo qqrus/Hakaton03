@@ -34,6 +34,7 @@ export default function Navigation() {
             {/* HR / Observer Links */}
             {(user.role === 'observer' || user.role === 'admin') && (
               <>
+                <Link href="/dashboard" className="font-black uppercase hover:border-b-4 border-black transition-all text-purple-500">Дашборд HR</Link>
                 <Link href="/inspector" className="font-black uppercase hover:border-b-4 border-black transition-all text-cyan-500 hover:text-cyan-600">Инспектор Кадров</Link>
                 {user.role === 'admin' && (
                   <Link href="/dashboard" className="font-black uppercase hover:border-b-4 border-black transition-all">Управление</Link>

@@ -1,3 +1,4 @@
+import random
 from sqlalchemy.orm import Session
 from .database import SessionLocal, engine
 from .models import Base, User, Event, UserRole, Rating
@@ -16,8 +17,17 @@ def seed_db():
         # hr@razum.dev is Inspector (Observer role).
         seed_users_data = [
             ("admin@razum.dev", "password123", "Организатор (Центр Молодёжи)", UserRole.ORGANIZER),
-            ("participant@razum.dev", "password123", "Иван Иванов (Участник)", UserRole.PARTICIPANT),
             ("hr@razum.dev", "password123", "Инспектор HR", UserRole.OBSERVER),
+            ("participant@razum.dev", "password123", "Иван Иванов", UserRole.PARTICIPANT),
+            ("student1@razum.dev", "password123", "Алексей Смирнов", UserRole.PARTICIPANT),
+            ("student2@razum.dev", "password123", "Мария Кузнецова", UserRole.PARTICIPANT),
+            ("student3@razum.dev", "password123", "Дмитрий Соколов", UserRole.PARTICIPANT),
+            ("student4@razum.dev", "password123", "Анна Попова", UserRole.PARTICIPANT),
+            ("student5@razum.dev", "password123", "Михаил Лебедев", UserRole.PARTICIPANT),
+            ("student6@razum.dev", "password123", "Екатерина Козлова", UserRole.PARTICIPANT),
+            ("student7@razum.dev", "password123", "Сергей Новиков", UserRole.PARTICIPANT),
+            ("student8@razum.dev", "password123", "Ольга Морозова", UserRole.PARTICIPANT),
+            ("student9@razum.dev", "password123", "Андрей Волков", UserRole.PARTICIPANT),
         ]
         
         users_map = {}
@@ -38,7 +48,9 @@ def seed_db():
             
             # Ensure rating exists for participant
             if role == UserRole.PARTICIPANT:
-                rating = Rating(user_id=user.id, total_points=450, level="Leader")
+                points = random.randint(100, 1000)
+                level = "Novice" if points < 300 else "Intermediate" if points < 700 else "Leader"
+                rating = Rating(user_id=user.id, total_points=points, level=level)
                 db.add(rating)
                 db.commit()
         

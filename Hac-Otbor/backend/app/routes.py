@@ -153,26 +153,35 @@ def get_user_pdf(user_id: int, db: Session = Depends(get_db)):
     rating = db.query(Rating).filter(Rating.user_id == user.id).first()
     
     # Use HTML template for xhtml2pdf to handle Cyrillic better
+    # Use absolute local path to the font to ensure xhtml2pdf finds it
+    import os
+    font_path = os.path.join(os.path.dirname(__file__), "Roboto-Regular.ttf")
+    font_path = font_path.replace('\\', '/') # Fix path for xhtml2pdf
+    
     html_content = f"""
     <html>
     <head>
         <meta charset="utf-8">
         <style>
-            body {{ font-family: Helvetica, sans-serif; }}
+            @font-face {{
+                font-family: 'Roboto';
+                src: url('{font_path}');
+            }}
+            body {{ font-family: 'Roboto', sans-serif; }}
             .header {{ font-size: 24pt; font-weight: bold; text-align: center; margin-bottom: 20pt; }}
             .item {{ margin-bottom: 10pt; font-size: 14pt; }}
             .label {{ font-weight: bold; color: #333; }}
         </style>
     </head>
     <body>
-        <div class="header">RAZUM 2.0 Candidate Report</div>
-        <div class="item"><span class="label">Name:</span> {user.name}</div>
+        <div class="header">Отчет о кандидате (RAZUM 2.0)</div>
+        <div class="item"><span class="label">ФИО:</span> {user.name}</div>
         <div class="item"><span class="label">Email:</span> {user.email}</div>
-        <div class="item"><span class="label">Role:</span> {user.role.value}</div>
-        <div class="item"><span class="label">City:</span> {user.city or "N/A"}</div>
+        <div class="item"><span class="label">Роль:</span> {user.role.value}</div>
+        <div class="item"><span class="label">Город:</span> {user.city or "Не указан"}</div>
         <hr/>
-        <div class="item"><span class="label">Total Points:</span> {rating.total_points if rating else 0}</div>
-        <div class="item"><span class="label">Level:</span> {rating.level if rating else 'Novice'}</div>
+        <div class="item"><span class="label">Всего баллов:</span> {rating.total_points if rating else 0}</div>
+        <div class="item"><span class="label">Уровень:</span> {rating.level if rating else 'Новичок'}</div>
     </body>
     </html>
     """
@@ -322,12 +331,14 @@ def confirm_participation(event_id: int, user_id: int, db: Session = Depends(get
     # Update Points
     rating = db.query(Rating).filter(Rating.user_id == user_id).first()
     points_earned = int(event.base_points * event.difficulty_coeff)
-    rating.total_points += points_earned
     
-    # Simple Level Logic
-    if rating.total_points > 400: rating.level = "Elite"
-    elif rating.total_points > 150: rating.level = "Leader"
-    elif rating.total_points > 50: rating.level = "Activist"
+    if rating:
+        rating.total_points += points_earned
+        
+        # Simple Level Logic
+        if rating.total_points > 400: rating.level = "Elite"
+        elif rating.total_points > 150: rating.level = "Leader"
+        elif rating.total_points > 50: rating.level = "Activist"
     
     db.commit()
     return {"message": f"Confirmed! User earned {points_earned} points."}
@@ -338,16 +349,16 @@ def get_event_participants(event_id: int, db: Session = Depends(get_db), current
     if not event or (event.organizer_id != current_user.id and current_user.role != UserRole.ADMIN):
         raise HTTPException(status_code=403, detail="Not authorized")
         
-    participations = db.query(Participation, User).join(User).filter(Participation.event_id == event_id).all()
+    participations = db.query(Participation, User).join(User, Participation.user_id == User.id).filter(Participation.event_id == event_id).all()
     return [
         {
-            "user_id": p.Participation.user_id,
-            "name": p.User.name,
-            "email": p.User.email,
-            "status": p.Participation.status,
-            "confirmed_at": p.Participation.confirmed_at
+            "user_id": part.user_id,
+            "name": usr.name,
+            "email": usr.email,
+            "status": part.status,
+            "confirmed_at": part.confirmed_at
         }
-        for p in participations
+        for part, usr in participations
     ]
 
 @router.delete("/events/{event_id}/participation")
@@ -379,11 +390,15 @@ async def get_user_ai_summary(user_id: int, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user: raise HTTPException(status_code=404, detail="User not found")
     
+    rating = db.query(Rating).filter(Rating.user_id == user.id).first()
+    total_points = rating.total_points if rating else 0
+    level = rating.level if rating else "Новичок"
+
     # Get activities
     activities = db.query(Event.title, Event.base_points, Event.difficulty_coeff)\
                    .join(Participation).filter(Participation.user_id == user_id).all()
     
     act_list = [{"title": a[0], "points": int(a[1]*a[2])} for a in activities]
     
-    summary = await generate_ai_summary(user.name, act_list)
+    summary = await generate_ai_summary(user.name, act_list, total_points, level)
     return {"summary": summary}

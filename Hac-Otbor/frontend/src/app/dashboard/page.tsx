@@ -3,6 +3,7 @@
 import { useAuth } from '@/app/providers';
 import ParticipantDashboard from '@/components/ParticipantDashboard';
 import OrganizerDashboard from '@/components/OrganizerDashboard';
+import ObserverDashboard from '@/components/ObserverDashboard';
 
 export default function Dashboard() {
   const { user, refreshUser, loading } = useAuth();
@@ -12,6 +13,10 @@ export default function Dashboard() {
 
   if (user.role === 'organizer' || user.role === 'admin') {
     return <OrganizerDashboard user={user} />;
+  }
+  
+  if (user.role === 'observer') {
+    return <ObserverDashboard user={user} />;
   }
 
   return <ParticipantDashboard user={user} refreshUser={refreshUser} />;
